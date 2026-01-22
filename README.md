@@ -1,15 +1,31 @@
-# Obituary Scraper
+# Multi-Funeral Home Obituary Scraper
 
-A Python application that scrapes obituary information from Deaton Funeral Home website.
+A Python application that scrapes obituary information from multiple Kentucky funeral home websites.
 
 ## Features
 
-This application scrapes obituary information from https://deatonfuneraljackson.com/wp/ and extracts:
+This application scrapes obituary information from **three funeral homes** and extracts:
 
 - **Name of the deceased**
 - **Date of death** 
 - **Age in whole years** (drops months and days)
+- **Funeral home source** (which funeral home published the obituary)
 - **Filters for the past 3 months** of obituaries
+- **Combined and sorted by death date** (newest first, reverse chronological)
+
+## Supported Funeral Homes
+
+1. **Deaton Funeral Home** - Jackson, KY
+   - URL: https://deatonfuneraljackson.com/wp/obituaries/
+   - Method: Individual page visits for complete birth-death date ranges
+
+2. **Breathitt Funeral Home** - Jackson, KY  
+   - URL: https://www.thebreathittfuneralhome.com/obits
+   - Method: Main page extraction with date range parsing
+
+3. **Watts Funeral Home** - Hazard, KY
+   - URL: https://www.wattsfuneralhomekentucky.com/obituaries/obituary-listings
+   - Method: Main page extraction with date range parsing
 
 ## Project Structure
 
