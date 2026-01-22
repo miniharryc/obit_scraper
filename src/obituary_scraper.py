@@ -61,8 +61,7 @@ class ObituaryScraper:
                 'birth_date': birth_date,
                 'death_date': death_date
             }
-        except Exception as e:
-            print(f"Error parsing dates from '{date_text}': {e}")
+        except Exception:
             return None
     
     def calculate_age_years(self, birth_date: datetime, death_date: datetime) -> int:
@@ -123,8 +122,7 @@ class ObituaryScraper:
             
             return None
             
-        except Exception as e:
-            print(f"Error fetching obituary detail from {obituary_url}: {e}")
+        except Exception:
             return None
 
     def extract_obituary_info(self, soup: BeautifulSoup) -> List[Dict[str, any]]:
@@ -139,8 +137,6 @@ class ObituaryScraper:
         """
         obituaries = []
         processed_links = set()  # Avoid duplicates
-        
-        print("Scanning obituaries page...")
         
         # Find obituary name links (not date links)
         obituary_name_links = []
@@ -160,12 +156,8 @@ class ObituaryScraper:
                 obituary_name_links.append((text, href))
                 processed_links.add(href)
         
-        print(f"Found {len(obituary_name_links)} unique obituary entries")
-        
         for name, obituary_url in obituary_name_links[:20]:  # Limit to first 20 for performance
             try:
-                print(f"Processing: {name}")
-                
                 # Fetch detailed info from individual obituary page
                 dates = self.fetch_obituary_detail(obituary_url)
                 
@@ -181,12 +173,8 @@ class ObituaryScraper:
                     }
                     
                     obituaries.append(obituary_info)
-                    print(f"✓ {name}: age {age}, died {dates['death_date'].strftime('%B %d, %Y')}")
-                else:
-                    print(f"✗ Could not parse dates for {name}")
                         
-            except Exception as e:
-                print(f"Error processing {name}: {e}")
+            except Exception:
                 continue
         
         return obituaries
