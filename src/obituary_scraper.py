@@ -98,6 +98,35 @@ class ObituaryScraper:
         cutoff_date = datetime.now() - timedelta(days=months * 30)  # Approximate
         return death_date >= cutoff_date
     
+    def fetch_obituary_detail(self, obituary_url: str) -> Optional[Dict[str, any]]:
+        """
+        Fetch detailed obituary information from individual obituary page.
+        
+        Args:
+            obituary_url: URL of the individual obituary page
+            
+        Returns:
+            Dictionary with birth_date and death_date, or None if parsing fails
+        """
+        try:
+            response = self.session.get(obituary_url, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Look for date range in the obituary page content
+            page_text = soup.get_text()
+            
+            # Look for pattern like "March 4, 1944 - January 21, 2026"
+            date_match = re.search(r'([A-Za-z]+ \d+, \d{4})\s*-\s*([A-Za-z]+ \d+, \d{4})', page_text)
+            if date_match:
+                return self.parse_date_range(date_match.group(0))
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error fetching obituary detail from {obituary_url}: {e}")
+            return None
+
     def extract_obituary_info(self, soup: BeautifulSoup) -> List[Dict[str, any]]:
         """
         Extract obituary information from the parsed HTML.
@@ -109,52 +138,55 @@ class ObituaryScraper:
             List of dictionaries containing obituary information
         """
         obituaries = []
+        processed_links = set()  # Avoid duplicates
         
-        # Look for obituary entries - they seem to have names as links with dates
-        obituary_links = soup.find_all('a', href=re.compile(r'/obituaries/'))
+        print("Scanning obituaries page...")
         
-        for link in obituary_links:
+        # Find obituary name links (not date links)
+        obituary_name_links = []
+        all_links = soup.find_all('a')
+        
+        for link in all_links:
+            href = link.get('href', '')
+            text = link.get_text().strip()
+            
+            # Look for links that point to individual obituaries and contain names (not dates)
+            if ('/obituaries/' in href and 
+                href not in processed_links and
+                not re.match(r'^[A-Za-z]+ \d+, \d{4}$', text) and  # Skip date-only links
+                len(text) > 3 and  # Skip very short text
+                not text.isdigit()):  # Skip numeric pagination links
+                
+                obituary_name_links.append((text, href))
+                processed_links.add(href)
+        
+        print(f"Found {len(obituary_name_links)} unique obituary entries")
+        
+        for name, obituary_url in obituary_name_links[:20]:  # Limit to first 20 for performance
             try:
-                # Extract name from the link text
-                name = link.get_text().strip()
+                print(f"Processing: {name}")
                 
-                # Look for date information near the link
-                # Check the parent element and siblings for date text
-                parent = link.parent
-                date_text = ""
+                # Fetch detailed info from individual obituary page
+                dates = self.fetch_obituary_detail(obituary_url)
                 
-                # Look for date pattern in the same element or nearby elements
-                for element in [link, parent] + list(parent.find_all_next(limit=3)):
-                    text = element.get_text() if element else ""
-                    # Look for date pattern like "Month Day, Year - Month Day, Year"
-                    date_match = re.search(r'([A-Za-z]+ \d+, \d{4})\s*-\s*([A-Za-z]+ \d+, \d{4})', text)
-                    if date_match:
-                        date_text = date_match.group(0)
-                        break
-                
-                if not date_text:
-                    # Alternative: look for separate date elements
-                    date_elem = parent.find(text=re.compile(r'\d{4}'))
-                    if date_elem:
-                        date_text = date_elem.strip()
-                
-                if name and date_text:
-                    dates = self.parse_date_range(date_text)
-                    if dates:
-                        age = self.calculate_age_years(dates['birth_date'], dates['death_date'])
-                        
-                        obituary_info = {
-                            'name': name,
-                            'birth_date': dates['birth_date'],
-                            'death_date': dates['death_date'],
-                            'age': age,
-                            'date_text': date_text
-                        }
-                        
-                        obituaries.append(obituary_info)
+                if dates:
+                    age = self.calculate_age_years(dates['birth_date'], dates['death_date'])
+                    
+                    obituary_info = {
+                        'name': name.strip(),
+                        'birth_date': dates['birth_date'],
+                        'death_date': dates['death_date'],
+                        'age': age,
+                        'url': obituary_url
+                    }
+                    
+                    obituaries.append(obituary_info)
+                    print(f"✓ {name}: age {age}, died {dates['death_date'].strftime('%B %d, %Y')}")
+                else:
+                    print(f"✗ Could not parse dates for {name}")
                         
             except Exception as e:
-                print(f"Error processing obituary link: {e}")
+                print(f"Error processing {name}: {e}")
                 continue
         
         return obituaries
