@@ -38,7 +38,7 @@ class ObituaryScraper:
             BeautifulSoup object of the parsed page, or None if failed
         """
         try:
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(url, timeout=20)
             response.raise_for_status()
             return BeautifulSoup(response.content, 'html.parser')
         except requests.RequestException as e:
@@ -116,7 +116,7 @@ class ObituaryScraper:
             Dictionary with birth_date and death_date, or None if parsing fails
         """
         try:
-            response = self.session.get(obituary_url, timeout=10)
+            response = self.session.get(obituary_url, timeout=20)
             response.raise_for_status()
             soup = BeautifulSoup(response.content, 'html.parser')
             
@@ -172,38 +172,77 @@ class ObituaryScraper:
         
         return obituaries
 
-    def extract_breathitt_obituaries(self, soup: BeautifulSoup) -> List[Dict[str, any]]:
-        """Extract obituaries from Breathitt Funeral Home using CSS classes."""
+    def extract_breathitt_obituaries(self, soup: BeautifulSoup = None) -> List[Dict[str, any]]:
+        """Extract obituaries from Breathitt Funeral Home using JSON API with session."""
         obituaries = []
         
-        # Find all obituary name elements using the CSS class
-        name_elements = soup.find_all(class_=re.compile(r'obit-name'))
-        
-        for name_element in name_elements:
-            try:
-                name = name_element.get_text().strip()
+        try:
+            # Step 1: Visit regular page to establish session
+            regular_url = "https://www.thebreathittfuneralhome.com/obits"
+            regular_response = self.session.get(regular_url, timeout=20)
+            
+            if regular_response.status_code != 200:
+                print(f"    Failed to establish session with Breathitt (status: {regular_response.status_code})")
+                return obituaries
+            
+            # Step 2: Use JSON API with established session
+            json_url = "https://www.thebreathittfuneralhome.com/obituaries/obit_json?page_count=20&page_number=1&search_field=&sort_by=deathDate&sort_direction=desc"
+            
+            # Add headers for AJAX request
+            json_headers = {
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Referer': regular_url
+            }
+            
+            response = self.session.get(json_url, headers=json_headers, timeout=20)
+            
+            if response.status_code == 200:
+                data = response.json()
                 
-                # Find the parent container to look for date information
-                parent = name_element.find_parent()
-                if parent:
-                    # Look for date range in the parent element's text
-                    parent_text = parent.get_text()
-                    date_match = re.search(r'([A-Za-z]+ \d+, \d{4})\s*[-–—]\s*([A-Za-z]+ \d+, \d{4})', parent_text)
-                    
-                    if date_match:
-                        dates = self.parse_date_range(f"{date_match.group(1)} - {date_match.group(2)}")
-                        if dates:
-                            age = self.calculate_age_years(dates['birth_date'], dates['death_date'])
-                            obituaries.append({
-                                'name': name,
-                                'birth_date': dates['birth_date'],
-                                'death_date': dates['death_date'],
-                                'age': age,
-                                'funeral_home': 'Breathitt Funeral Home',
-                                'url': ''
-                            })
-            except Exception:
-                continue
+                # JSON response is a list of obituaries directly
+                if isinstance(data, list):
+                    for obit_data in data:
+                        try:
+                            # Build name from components
+                            first_name = obit_data.get('first_name', '').strip()
+                            middle_name = obit_data.get('middle_name', '').strip()
+                            last_name = obit_data.get('last_name', '').strip()
+                            
+                            # Combine name parts
+                            name_parts = [first_name, middle_name, last_name]
+                            name = ' '.join([part for part in name_parts if part])
+                            
+                            birth_date_str = obit_data.get('birth_date', '')
+                            death_date_str = obit_data.get('death_date', '')
+                            
+                            if name and birth_date_str and death_date_str:
+                                # Parse dates (MM/DD/YYYY format)
+                                birth_date = parse_date(birth_date_str)
+                                death_date = parse_date(death_date_str)
+                                age = self.calculate_age_years(birth_date, death_date)
+                                
+                                # Use obit_path - it's already a full URL
+                                full_url = obit_data.get('obit_path', '')
+                                
+                                obituaries.append({
+                                    'name': name,
+                                    'birth_date': birth_date,
+                                    'death_date': death_date,
+                                    'age': age,
+                                    'funeral_home': 'Breathitt Funeral Home',
+                                    'url': full_url
+                                })
+                        except Exception as e:
+                            print(f"    Error parsing obituary data: {e}")
+                            continue
+                else:
+                    print(f"    Unexpected JSON response format from Breathitt")
+            else:
+                print(f"    Breathitt JSON API returned status: {response.status_code}")
+                
+        except Exception as e:
+            print(f"    Error fetching data from Breathitt: {e}")
         
         return obituaries
 
@@ -226,6 +265,16 @@ class ObituaryScraper:
                     div_text = obituary_div.get_text()
                     date_match = re.search(r'([A-Za-z]+ \d+, \d{4})\s*[-–—]\s*([A-Za-z]+ \d+, \d{4})', div_text)
                     
+                    # Look for a link to the individual obituary page
+                    obituary_url = ''
+                    link_element = obituary_div.find('a', href=True)
+                    if link_element:
+                        href = link_element.get('href', '')
+                        if href.startswith('/'):
+                            obituary_url = f"https://www.wattsfuneralhomekentucky.com{href}"
+                        elif href.startswith('http'):
+                            obituary_url = href
+                    
                     if date_match:
                         dates = self.parse_date_range(f"{date_match.group(1)} - {date_match.group(2)}")
                         if dates:
@@ -236,7 +285,7 @@ class ObituaryScraper:
                                 'death_date': dates['death_date'],
                                 'age': age,
                                 'funeral_home': 'Watts Funeral Home',
-                                'url': ''
+                                'url': obituary_url
                             })
             except Exception:
                 continue
@@ -313,4 +362,6 @@ class ObituaryScraper:
             print(f"Date of Death: {obit['death_date'].strftime('%B %d, %Y')}")
             print(f"Age: {obit['age']} years")
             print(f"Funeral Home: {obit['funeral_home']}")
+            if obit.get('url'):
+                print(f"Obituary URL: {obit['url']}")
             print("-" * 80)
