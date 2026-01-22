@@ -1,24 +1,24 @@
 """
-Main module for the Python workspace.
+Main module for the obituary scraper application.
 """
 
-
-def hello_world(name: str = "World") -> str:
-    """
-    Return a greeting message.
-    
-    Args:
-        name: The name to greet (default: "World")
-    
-    Returns:
-        A greeting message string
-    """
-    return f"Hello, {name}!"
+from obituary_scraper import ObituaryScraper
 
 
 def main() -> None:
-    """Main entry point for the application."""
-    print(hello_world("Python Workspace"))
+    """Main entry point for the obituary scraper application."""
+    print("Deaton Funeral Home Obituary Scraper")
+    print("=" * 50)
+    print("Fetching obituaries from the past 3 months...\n")
+    
+    try:
+        scraper = ObituaryScraper()
+        obituaries = scraper.get_recent_obituaries(months=3)
+        scraper.print_obituaries(obituaries)
+        
+    except Exception as e:
+        print(f"An error occurred while scraping obituaries: {e}")
+        print("Please check your internet connection and try again.")
 
 
 if __name__ == "__main__":

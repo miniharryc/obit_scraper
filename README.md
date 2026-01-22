@@ -1,23 +1,33 @@
-# Python Workspace
+# Obituary Scraper
 
-A well-structured Python workspace template for new projects.
+A Python application that scrapes obituary information from Deaton Funeral Home website.
+
+## Features
+
+This application scrapes obituary information from https://deatonfuneraljackson.com/wp/ and extracts:
+
+- **Name of the deceased**
+- **Date of death** 
+- **Age in whole years** (drops months and days)
+- **Filters for the past 3 months** of obituaries
 
 ## Project Structure
 
 ```
 python_workspace/
-├── src/                    # Source code
-│   ├── __init__.py        # Package initialization
-│   └── main.py            # Main module
-├── tests/                 # Test files
-│   ├── __init__.py        # Test package initialization
-│   └── test_main.py       # Tests for main module
-├── docs/                  # Documentation
-├── venv/                  # Virtual environment
-├── .gitignore            # Git ignore rules
-├── requirements.txt      # Production dependencies
-├── requirements-dev.txt  # Development dependencies
-└── README.md            # This file
+├── src/                         # Source code
+│   ├── __init__.py             # Package initialization
+│   ├── main.py                 # Main application entry point
+│   └── obituary_scraper.py     # Obituary scraper class
+├── tests/                      # Test files
+│   ├── __init__.py             # Test package initialization
+│   └── test_main.py            # Tests for scraper functionality
+├── docs/                       # Documentation
+├── venv/                       # Virtual environment
+├── .gitignore                  # Git ignore rules
+├── requirements.txt            # Production dependencies
+├── requirements-dev.txt        # Development dependencies
+└── README.md                   # This file
 ```
 
 ## Setup
