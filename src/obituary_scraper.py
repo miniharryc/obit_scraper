@@ -11,30 +11,38 @@ import re
 
 
 class ObituaryScraper:
-    """Scraper for extracting obituary information from Deaton Funeral Home website."""
+    """Scraper for extracting obituary information from multiple funeral home websites."""
     
     def __init__(self):
-        self.base_url = "https://deatonfuneraljackson.com/wp/"
-        self.obituaries_url = f"{self.base_url}obituaries/"
+        # Define all funeral home URLs
+        self.funeral_homes = {
+            'Deaton Funeral Home': "https://deatonfuneraljackson.com/wp/obituaries/",
+            'Breathitt Funeral Home': "https://www.thebreathittfuneralhome.com/obits",
+            'Watts Funeral Home': "https://www.wattsfuneralhomekentucky.com/obituaries/obituary-listings"
+        }
+        
         self.session = requests.Session()
         # Set headers to mimic a real browser
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         })
     
-    def fetch_obituaries_page(self) -> Optional[BeautifulSoup]:
+    def fetch_page(self, url: str) -> Optional[BeautifulSoup]:
         """
-        Fetch and parse the main obituaries page.
+        Fetch and parse a web page.
         
+        Args:
+            url: URL to fetch
+            
         Returns:
             BeautifulSoup object of the parsed page, or None if failed
         """
         try:
-            response = self.session.get(self.obituaries_url, timeout=10)
+            response = self.session.get(url, timeout=10)
             response.raise_for_status()
             return BeautifulSoup(response.content, 'html.parser')
         except requests.RequestException as e:
-            print(f"Error fetching obituaries page: {e}")
+            print(f"Error fetching page {url}: {e}")
             return None
     
     def parse_date_range(self, date_text: str) -> Optional[Dict[str, datetime]]:
@@ -125,20 +133,11 @@ class ObituaryScraper:
         except Exception:
             return None
 
-    def extract_obituary_info(self, soup: BeautifulSoup) -> List[Dict[str, any]]:
-        """
-        Extract obituary information from the parsed HTML.
-        
-        Args:
-            soup: BeautifulSoup object of the obituaries page
-            
-        Returns:
-            List of dictionaries containing obituary information
-        """
+    def extract_deaton_obituaries(self, soup: BeautifulSoup) -> List[Dict[str, any]]:
+        """Extract obituaries from Deaton Funeral Home (requires individual page visits)."""
         obituaries = []
-        processed_links = set()  # Avoid duplicates
+        processed_links = set()
         
-        # Find obituary name links (not date links)
         obituary_name_links = []
         all_links = soup.find_all('a')
         
@@ -146,54 +145,141 @@ class ObituaryScraper:
             href = link.get('href', '')
             text = link.get_text().strip()
             
-            # Look for links that point to individual obituaries and contain names (not dates)
             if ('/obituaries/' in href and 
                 href not in processed_links and
-                not re.match(r'^[A-Za-z]+ \d+, \d{4}$', text) and  # Skip date-only links
-                len(text) > 3 and  # Skip very short text
-                not text.isdigit()):  # Skip numeric pagination links
+                not re.match(r'^[A-Za-z]+ \d+, \d{4}$', text) and
+                len(text) > 3 and
+                not text.isdigit()):
                 
                 obituary_name_links.append((text, href))
                 processed_links.add(href)
         
-        for name, obituary_url in obituary_name_links[:20]:  # Limit to first 20 for performance
+        for name, obituary_url in obituary_name_links[:20]:
             try:
-                # Fetch detailed info from individual obituary page
                 dates = self.fetch_obituary_detail(obituary_url)
-                
                 if dates:
                     age = self.calculate_age_years(dates['birth_date'], dates['death_date'])
-                    
-                    obituary_info = {
+                    obituaries.append({
                         'name': name.strip(),
                         'birth_date': dates['birth_date'],
                         'death_date': dates['death_date'],
                         'age': age,
+                        'funeral_home': 'Deaton Funeral Home',
                         'url': obituary_url
-                    }
-                    
-                    obituaries.append(obituary_info)
-                        
+                    })
             except Exception:
                 continue
         
         return obituaries
-    
+
+    def extract_breathitt_obituaries(self, soup: BeautifulSoup) -> List[Dict[str, any]]:
+        """Extract obituaries from Breathitt Funeral Home (date ranges on main page)."""
+        obituaries = []
+        
+        # Look for obituary entries - they appear as text blocks with names and dates
+        page_text = soup.get_text()
+        
+        # Split by common separators and look for name/date patterns
+        sections = re.split(r'\n+', page_text)
+        
+        i = 0
+        while i < len(sections):
+            section = sections[i].strip()
+            
+            # Look for a name that looks like a person's name (2+ words, proper case)
+            name_match = re.match(r'^([A-Z][a-z]+ (?:[A-Z][a-z]+ )*[A-Z][a-z]+)$', section)
+            if name_match:
+                name = name_match.group(1)
+                
+                # Look for date range in next few sections
+                for j in range(i+1, min(i+5, len(sections))):
+                    next_section = sections[j].strip()
+                    date_match = re.search(r'([A-Za-z]+ \d+, \d{4})\s*-\s*([A-Za-z]+ \d+, \d{4})', next_section)
+                    if date_match:
+                        dates = self.parse_date_range(date_match.group(0))
+                        if dates:
+                            age = self.calculate_age_years(dates['birth_date'], dates['death_date'])
+                            obituaries.append({
+                                'name': name,
+                                'birth_date': dates['birth_date'],
+                                'death_date': dates['death_date'],
+                                'age': age,
+                                'funeral_home': 'Breathitt Funeral Home',
+                                'url': ''
+                            })
+                        break
+            i += 1
+        
+        return obituaries
+
+    def extract_watts_obituaries(self, soup: BeautifulSoup) -> List[Dict[str, any]]:
+        """Extract obituaries from Watts Funeral Home (date ranges on main page)."""
+        obituaries = []
+        
+        # Look for obituary entries in the page text - similar to Breathitt approach
+        page_text = soup.get_text()
+        
+        # Find name and date patterns in the text
+        lines = page_text.split('\n')
+        
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            # Look for names (2+ words, starts with capital)
+            if re.match(r'^[A-Z][a-z]+ .+ [A-Z][a-z]+', line) and len(line) < 100:
+                potential_name = line.strip()
+                
+                # Look for date range in next few lines
+                for j in range(i+1, min(i+5, len(lines))):
+                    next_line = lines[j].strip()
+                    date_match = re.search(r'([A-Za-z]+ \d+, \d{4})\s*-\s*([A-Za-z]+ \d+, \d{4})', next_line)
+                    if date_match:
+                        dates = self.parse_date_range(date_match.group(0))
+                        if dates:
+                            age = self.calculate_age_years(dates['birth_date'], dates['death_date'])
+                            obituaries.append({
+                                'name': potential_name,
+                                'birth_date': dates['birth_date'], 
+                                'death_date': dates['death_date'],
+                                'age': age,
+                                'funeral_home': 'Watts Funeral Home',
+                                'url': ''
+                            })
+                        break
+            i += 1
+                
+        return obituaries
+
     def get_recent_obituaries(self, months: int = 3) -> List[Dict[str, any]]:
         """
-        Get obituaries from the past specified months.
+        Get obituaries from all funeral homes for the past specified months.
         
         Args:
             months: Number of months to look back (default: 3)
             
         Returns:
-            List of obituary information dictionaries
+            List of obituary information dictionaries, sorted by death date (newest first)
         """
-        soup = self.fetch_obituaries_page()
-        if not soup:
-            return []
+        all_obituaries = []
         
-        all_obituaries = self.extract_obituary_info(soup)
+        print("Fetching obituaries from all funeral homes...")
+        
+        # Fetch from each funeral home
+        for home_name, url in self.funeral_homes.items():
+            print(f"Checking {home_name}...")
+            soup = self.fetch_page(url)
+            if soup:
+                if 'deatonfuneraljackson' in url:
+                    obits = self.extract_deaton_obituaries(soup)
+                elif 'thebreathittfuneralhome' in url:
+                    obits = self.extract_breathitt_obituaries(soup)
+                elif 'wattsfuneralhomekentucky' in url:
+                    obits = self.extract_watts_obituaries(soup)
+                else:
+                    obits = []
+                
+                all_obituaries.extend(obits)
         
         # Filter for recent obituaries
         recent_obituaries = [
@@ -218,10 +304,11 @@ class ObituaryScraper:
             return
             
         print(f"Found {len(obituaries)} obituaries from the past 3 months:\n")
-        print("-" * 70)
+        print("-" * 80)
         
         for obit in obituaries:
             print(f"Name: {obit['name']}")
             print(f"Date of Death: {obit['death_date'].strftime('%B %d, %Y')}")
             print(f"Age: {obit['age']} years")
-            print("-" * 70)
+            print(f"Funeral Home: {obit['funeral_home']}")
+            print("-" * 80)

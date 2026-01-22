@@ -7,8 +7,9 @@ from obituary_scraper import ObituaryScraper
 
 def main() -> None:
     """Main entry point for the obituary scraper application."""
-    print("Deaton Funeral Home Obituary Scraper")
+    print("Multi-Funeral Home Obituary Scraper")
     print("=" * 50)
+    print("Scraping: Deaton, Breathitt, and Watts Funeral Homes")
     print("Fetching obituaries from the past 3 months...\n")
     
     try:
