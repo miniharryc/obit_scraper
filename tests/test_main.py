@@ -20,8 +20,9 @@ class TestObituaryScraper:
     
     def test_scraper_initialization(self):
         """Test that scraper initializes correctly."""
-        assert self.scraper.base_url == "https://deatonfuneraljackson.com/wp/"
-        assert self.scraper.obituaries_url == "https://deatonfuneraljackson.com/wp/obituaries/"
+        assert self.scraper.funeral_homes['Deaton Funeral Home'] == "https://deatonfuneraljackson.com/wp/obituaries/"
+        assert 'Breathitt Funeral Home' in self.scraper.funeral_homes
+        assert 'Watts Funeral Home' in self.scraper.funeral_homes
         assert self.scraper.session is not None
     
     def test_parse_date_range_valid(self):
